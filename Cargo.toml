@@ -1,0 +1,14 @@
+[package]
+name = "yacc"
+version = "0.1.0"
+authors = ["Raghav Shankar <warpspeedscp@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+lalrpop-util = "0.15.2"
+peg = "*"
+regex = "0.2.1"
+
+[dependencies.nom]
+version = "^4.0"
+features = ["regexp", "verbose-errors"]

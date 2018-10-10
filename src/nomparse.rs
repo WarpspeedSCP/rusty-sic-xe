@@ -294,6 +294,7 @@ named_args!(
                 tag!(" ") | tag!("\t")
             )
         )
+     >> not!(do_parse!(tag!(".") >> ()))
      >> l: opt!(
             terminated!(
                 label,
@@ -304,10 +305,9 @@ named_args!(
                 )
             )
         )
-     >> op: do_parse!(a: alt_complete!( asm_directive | instruction | value!(source_op::Error)) >> ({println!("args: {:#?}", a); a}))
-     >> a: args
+     >> op: alt_complete!( asm_directive | instruction | value!(source_op::Error))
+     >> a: alt_complete!(args | value!(Vec::new()))
      >> ({
-            println!("op:   ghfyhhg {:#?}", op);
 
             *line_no += 1;
             let mut res = Line::new().mem_loc(*mem_loc).label(l).line_no(*line_no);
@@ -385,12 +385,16 @@ named_args!(
                             }
 
                         }
-                        _      =>  {}
+                        _      =>  {
+                            match res.label {
+                                Some(ref x) => if x.len() > 0 { err_vec.push(add_to_symtab(&mut res, sym_tab, (false, ""))) },
+                                None        => err_vec.push(add_to_symtab(&mut res, sym_tab, (false, "")))
+                            }
+                        }
                     }
                 }
                 source_op::Error => err_vec.push(Err("Invalid opcode in this line!".to_owned()))
             }
-            println!("op:   ghfyhhg {:#?}", res);
             res.args(a).operation(op)
             //.operation(op).args(a).label(l).line_no(*line_no + 1).mem_loc(*mem_loc).format()
         }) //
@@ -409,12 +413,8 @@ named_args!(
      >> c: opt!(comment)
      >> ({
             let mut temp = match x {
-                Some(l) => if l.clone().operation(source_op::Neh) == Line::new() {
-                    l.operation(source_op::Neh)
-                } else {
-                    l
-                },
-                None => Line::new()
+                Some(l) => l,
+                None => Line::new().format(format::Comment)
             };
 
             temp = match c {

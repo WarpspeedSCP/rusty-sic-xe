@@ -164,9 +164,9 @@ pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
                         }
                     }
                     curr.obj_code.push(opcode);
-                    curr.obj_code.push((ta & 0x00FF0000 >> 16) as u8);
-                    curr.obj_code.push((ta & 0x0000FF00 >> 8) as u8);
-                    curr.obj_code.push((ta & 0x000000FF >> 0) as u8);
+                    curr.obj_code.push(((ta & 0x00FF0000) >> 16) as u8);
+                    curr.obj_code.push(((ta & 0x0000FF00) >> 8) as u8);
+                    curr.obj_code.push(((ta & 0x000000FF) >> 0) as u8);
 
                 },
                 _ => panic!()

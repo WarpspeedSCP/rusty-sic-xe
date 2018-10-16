@@ -54,7 +54,7 @@ fn tst() {
             line::op_struct { 
                 opcode: 0x10,
                 name: "STX",
-                long: false
+                long: true
             }
         )
     ).args(
@@ -67,14 +67,14 @@ fn tst() {
         ]
     ).line_no(30)
     .mem_loc(0x104E)
-    .format(line::format::Normal);
+    .format(line::format::Long);
 
     let mut sym_tab = line::Symtab::new();
     sym_tab.insert("LENGTH".to_owned(), line::Pos {
         line_no: 38,
-        mem_loc: 0x1001
+        mem_loc: 0x0127
     });
-
+    
     nomparse::gen_obj_code(&mut curr, &mut sym_tab, 0xFFFFFFFF);
     println!("{:#?}", curr);
 }

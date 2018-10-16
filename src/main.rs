@@ -17,7 +17,7 @@ use self::line::display_vec;
 
 
 fn main() {
-    let input = "\nCOPY   START  1000\nFIRST  STL    RETADR\nCLOOP  JSUB   RDREC\n       LDA    LENGTH\n       COMP   ZERO\n       JEQ    ENDFIL\n       JSUB   WRREC\n       J      CLOOP\nENDFIL LDA    EOF\n       STA    BUFFER\n       LDA    THREE\n       STA    LENGTH\n       JSUB   WRREC\n       LDL    RETADR\n       RSUB\nEOF    BYTE   C'EOF'\nTHREE  WORD   3\nZERO   WORD   0\nRETADR RESW   1\nLENGTH RESW   1\nBUFFER RESB   4096\n.\n.      SUBROUTINE TO READ RECORD INTO BUFFER\n.\nRDREC  LDX    ZERO\n       LDA    ZERO\nRLOOP  TD     INPUT\n       JEQ    RLOOP\n       RD     INPUT\n       COMP   ZERO\n       JEQ    EXIT\n       STCH   BUFFER,X\n       TIX    MAXLEN\n       JLT    RLOOP\nEXIT   STX    LENGTH\n       RSUB\nINPUT  BYTE   X'F1'\nMAXLEN WORD   4096\n.\n.      SUBROUTINE TO WRITE RECORD FROM BUFFER\n.\nWRREC  LDX    ZERO\nWLOOP  TD     OUTPUT\n       JEQ    WLOOP\n       LDCH   BUFFER,X\n       WD     OUTPUT\n       TIX    LENGTH\n       JLT    WLOOP\n       RSUB\nOUTPUT BYTE   X'06'\n       END    FIRST\n";
+    let input = "\nCOPY   START  1000h\nFIRST  STL    RETADR\nCLOOP  JSUB   RDREC\n       LDA    LENGTH\n       COMP   ZERO\n       JEQ    ENDFIL\n       JSUB   WRREC\n       J      CLOOP\nENDFIL LDA    EOF\n       STA    BUFFER\n       LDA    THREE\n       STA    LENGTH\n       JSUB   WRREC\n       LDL    RETADR\n       RSUB\nEOF    BYTE   C'EOF'\nTHREE  WORD   3\nZERO   WORD   0\nRETADR RESW   1\nLENGTH RESW   1\nBUFFER RESB   4096\n.\n.      SUBROUTINE TO READ RECORD INTO BUFFER\n.\nRDREC  LDX    ZERO\n       LDA    ZERO\nRLOOP  TD     INPUT\n       JEQ    RLOOP\n       RD     INPUT\n       COMP   ZERO\n       JEQ    EXIT\n       STCH   BUFFER,X\n       TIX    MAXLEN\n       JLT    RLOOP\nEXIT   STX    LENGTH\n       RSUB\nINPUT  BYTE   X'F1'\nMAXLEN WORD   4096\n.\n.      SUBROUTINE TO WRITE RECORD FROM BUFFER\n.\nWRREC  LDX    ZERO\nWLOOP  TD     OUTPUT\n       JEQ    WLOOP\n       LDCH   BUFFER,X\n       WD     OUTPUT\n       TIX    LENGTH\n       JLT    WLOOP\n       RSUB\nOUTPUT BYTE   X'06'\n       END    FIRST\n";
     let mut parsed: File = File::create("herp").unwrap();
     let mut err_vec: Vec<Result<(), String> > = Vec::new();
     let mut parse_vec: Vec<line::Line> = Vec::new();
@@ -34,7 +34,7 @@ fn main() {
         ).unwrap().1;
         println!("{:#?}", res);
                          //line_no memloc label opcode args
-        write!(parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:?}\n", res.line_no, 0x1000 + res.mem_loc, res.label.clone().unwrap_or("".to_owned()), res.operation, display_vec(&res.args), res.format);
+        write!(parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:?}\n", res.line_no, res.mem_loc, res.label.clone().unwrap_or("".to_owned()), res.operation, display_vec(&res.args), res.format);
         parse_vec.push(res);
 
     }

@@ -2,22 +2,20 @@ use nom::{is_hex_digit, is_digit, is_alphabetic, is_alphanumeric};
 
 use std::str;
 
-
 use super::line::*;
 
-
-fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'static str)) -> Result<(), String> {
+pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'static str)) -> Result<(), String> {
     match curr.label {
         Some(ref l) => {
             if !symtab.contains_key(l) {
-                symtab.insert(l.to_string(), (curr.mem_loc, curr.line_no));
+                symtab.insert(l.to_string(), Pos { line_no: curr.line_no, mem_loc: curr.mem_loc });
                 Ok(())
             } else {
                 Err(
                     format!(
                         "Duplicate definition of symbol {}, first defined in line {}.", 
                         l, 
-                        symtab.get(l).unwrap().1
+                        symtab.get(l).unwrap().mem_loc
                     )
                 )
             }
@@ -29,6 +27,152 @@ fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'static st
                 Ok(())
             }
         }
+    }
+}
+
+pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
+    match curr.format {
+        format::Opless => {
+            let tmp = curr.operation.clone();
+            match tmp {
+                source_op::Instruction(x) => curr.obj_code.push(x.opcode),
+                _ => panic!("NOT ALLOWED")
+            }
+        },
+        format::Register => {
+            let tmp = curr.operation.clone();
+            match tmp {
+                source_op::Instruction(x) => curr.obj_code.push(x.opcode),
+                _ => panic!("NOT ALLOWED")
+            }
+            let mut tmp = 0u8;
+            match curr.args.len() {
+                1 => curr.obj_code.push(curr.args[0].reg_code << 4),
+                2 => curr.obj_code.push((curr.args[0].reg_code << 4) | (curr.args[1].reg_code)),
+                _ => panic!("NOT ALLOWED")
+            }
+        },
+        // opcode n i | x b p e offset
+        // 000000 0 0 | 0 0 0 0 0000 0000 0000
+        format::Normal => {
+            let mut opcode = match curr.operation.clone() {
+                source_op::Instruction(x) => x.opcode,
+                _ => panic!()
+            };
+            match curr.args.len() {
+                1 | 2 => {
+                    opcode |= curr.args[0].modifier.clone() as u8;
+                    let mut disp = 0u16;
+
+                    match curr.args[0].modifier {
+                        addr_mod::Direct | addr_mod::Indirect => match curr.args[0].val {
+                            arg::Label(ref x) => {
+                                let target = symtab.get(x).unwrap().mem_loc;
+                                if  base != 0xFFFFFFFF  {
+                                    disp = ((target - base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                } else {
+                                    disp = (((target as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                }
+                            }
+                            arg::IntLit(ref x) => {
+                                let target = *x;
+                                if  base != 0xFFFFFFFF  {
+                                    disp = ((target as u32 - base) as u16 & 0x0FFF) | 0x4000u16;
+                                } else {
+                                    disp = (((target - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16;
+                                }
+                            }
+                            _ => panic!()
+                        }
+                        addr_mod::Immediate => match curr.args[0].val {
+                            arg::Label(ref x) => {
+                                let target = symtab.get(x).unwrap().mem_loc;
+                                if  base != 0xFFFFFFFF  {
+                                    disp = ((target - base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                } else {
+                                    disp = (((target as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                }
+                            }
+                            arg::IntLit(ref x) => {
+                                if *x > 0x0FFF {
+                                    panic!();
+                                } else {
+                                    disp = *x as u16;
+                                }
+                            }
+                            _ => panic!()
+                        }
+                        _ => panic!()
+                    }
+
+                    if curr.args.len() == 2 {
+                        if curr.args[1].reg_code == 0x01 {
+                            disp |= 0x8000u16;
+                        } else {
+                            panic!()
+                        }
+                    }
+                    curr.obj_code.push(opcode);
+                    curr.obj_code.push((disp >> 8) as u8);
+                    curr.obj_code.push((disp & 0x00FF) as u8);
+
+                },
+                _ => panic!()
+            }
+
+        },
+        // opcode n i | x b p e addr |           |          
+        // 000000 0 0 | 0 n n 1 0000 | 0000 0000 | 0000 0000
+        //              8 4 2 1  0      0    0      0    0  
+        format::Long => {
+            let mut opcode = match curr.operation.clone() {
+                source_op::Instruction(x) => x.opcode,
+                _ => panic!()
+            };
+            match curr.args.len() {
+                1 | 2 => {
+                    opcode |= curr.args[0].modifier.clone() as u8;
+                    let mut ta = 0x00100000u32;
+
+                    match curr.args[0].modifier {
+                        addr_mod::Direct | addr_mod::Indirect => match curr.args[0].val {
+                            arg::Label(ref x) => {
+                                ta |= symtab.get(x).unwrap().mem_loc & 0x000FFFFFu32;
+                            }
+                            arg::IntLit(ref x) => {
+                                ta |= *x as u32 & 0x000FFFFFu32;
+                            }
+                            _ => panic!()
+                        }
+                        addr_mod::Immediate => match curr.args[0].val {
+                            arg::Label(ref x) => {
+                                ta |= symtab.get(x).unwrap().mem_loc & 0x000FFFFFu32;
+                            }
+                            arg::IntLit(ref x) => {
+                                ta |= *x as u32 & 0x000FFFFFu32;
+                            }
+                            _ => panic!()
+                        }
+                        _ => panic!()
+                    }
+
+                    if curr.args.len() == 2 {
+                        if curr.args[1].reg_code == 0x01 {
+                            ta |= 0x800000u32;
+                        } else {
+                            panic!()
+                        }
+                    }
+                    curr.obj_code.push(opcode);
+                    curr.obj_code.push((ta & 0x00FF0000 >> 16) as u8);
+                    curr.obj_code.push((ta & 0x0000FF00 >> 8) as u8);
+                    curr.obj_code.push((ta & 0x000000FF >> 0) as u8);
+
+                },
+                _ => panic!()
+            }
+        },
+        _ => return
     }
 }
 
@@ -160,7 +304,22 @@ named!(
         )
      >> (
                 arg_struct{
-                    val: content, 
+                    reg_code: match content {
+                        arg::Label(ref x) => match x.to_uppercase().as_str() {
+                            "A"     => 0x00,
+                            "X"     => 0x01,
+                            "L"     => 0x02,
+                            "B"     => 0x03,
+                            "S"     => 0x04,
+                            "T"     => 0x05,
+                            "F"     => 0x06,
+                            "PC"    => 0x08,
+                            "SW"    => 0x09,
+                            _       => 0xFF
+                        }
+                        _ => 0xFF
+                    }, 
+                    val: content,
                     modifier: match mode {
                         0 => addr_mod::Direct,
                         1 => addr_mod::Immediate,
@@ -289,12 +448,13 @@ named!(
 named_args!(
     operation_string<'a>(mem_loc: &mut u32, line_no: &mut u32, sym_tab: &mut Symtab, err_vec: &mut Vec<Result<(), String> >)<&'a [u8], Line >,
     do_parse!(
-        many0!(
+        not!(tag!("\n"))
+     >> many0!(
             alt_complete!(
                 tag!(" ") | tag!("\t")
             )
         )
-     >> not!(do_parse!(tag!(".") >> ()))
+     >> not!(tag!("."))
      >> l: opt!(
             terminated!(
                 label,
@@ -308,9 +468,7 @@ named_args!(
      >> op: alt_complete!( asm_directive | instruction | value!(source_op::Error))
      >> a: alt_complete!(args | value!(Vec::new()))
      >> ({
-
-            *line_no += 1;
-            let mut res = Line::new().mem_loc(*mem_loc).label(l).line_no(*line_no);
+            let mut res = Line::new().mem_loc(*mem_loc).line_no(*line_no).label(l);
             match op {
                 source_op::Instruction(ref x) => {
                     err_vec.push(add_to_symtab(&mut res, sym_tab, (false, "")));
@@ -344,6 +502,9 @@ named_args!(
                             }
                         }
                     } else {
+                        if x.name == "RSUB" {
+                            *mem_loc += 2;
+                        }
                         res = res.format(format::Opless);
                         *mem_loc += 1;
                     }
@@ -396,8 +557,7 @@ named_args!(
                 source_op::Error => err_vec.push(Err("Invalid opcode in this line!".to_owned()))
             }
             res.args(a).operation(op)
-            //.operation(op).args(a).label(l).line_no(*line_no + 1).mem_loc(*mem_loc).format()
-        }) //
+        }) 
     )
 );
 
@@ -408,7 +568,7 @@ named_args!(
     pub statement<'a>(mem_loc: &mut u32, line_no: &mut u32, sym_tab: &mut Symtab, err_vec: &mut Vec<Result<(), String> >)<&'a [u8], Line>,
     do_parse!(
         x: opt!(
-            call!(operation_string, mem_loc, line_no, sym_tab, err_vec)
+            call!(operation_string, mem_loc, {*line_no += 1; line_no}, sym_tab, err_vec)
         )
      >> c: opt!(comment)
      >> ({
@@ -419,8 +579,7 @@ named_args!(
 
             temp = match c {
                 Some(c) => temp.comment(&str::from_utf8(c).unwrap()),
-  
-                None => temp 
+                None => temp
             };
 
             temp

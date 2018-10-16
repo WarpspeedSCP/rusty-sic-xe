@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 lazy_static = "*"
 quick-error = "1.2.2"
+bitflags = "*"
 
 [dependencies.nom]
 version = "^4.0"

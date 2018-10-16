@@ -1,7 +1,29 @@
 use std::mem::discriminant;
 use std::collections::HashMap;
 
-pub type Symtab = HashMap<String, (u32, u32)>;
+
+use std::fmt::Write;
+use std::fmt;
+
+
+bitflags! {
+    pub struct Modifiers: u8 {
+        const N = 0b00100000;
+        const I = 0b00010000;
+        const X = 0b00001000;
+        const B = 0b00000100;
+        const P = 0b00000010;
+        const E = 0b00000001;
+        const z = 0b00000000;
+    }
+}
+
+
+
+#[derive(Debug)]
+pub struct Pos { pub line_no: u32, pub mem_loc: u32 }
+
+pub type Symtab = HashMap<String, Pos>;
 
 #[derive(Debug, Eq, Clone)]
 pub enum format {
@@ -27,7 +49,8 @@ pub struct Line {
     pub comment: String,
     pub line_no: u32,
     pub mem_loc: u32,
-    pub format: format
+    pub format: format,
+    pub obj_code: Vec<u8>,
 }
 
 impl PartialEq for Line {
@@ -50,7 +73,8 @@ impl Line {
             comment: String::default(),
             line_no: 0,
             mem_loc: 0,
-            format: format::None
+            format: format::None,
+            obj_code: Vec::new()
         }
     }
 
@@ -93,16 +117,32 @@ impl Line {
 
 #[derive(Debug, Eq, Clone)]
 pub enum addr_mod {
-    Direct,
-    Indirect,
-    Immediate,
-    Literal
+    Direct = 0x00,
+    Indirect = 0x02,
+    Immediate = 0x01,
+    Literal = 0x12
 }
 
 #[derive(Debug, Eq, Clone)]
 pub struct arg_struct {
     pub val: arg,
+    pub reg_code: u8,
     pub modifier: addr_mod
+}
+
+pub fn display_vec(v: &Vec<arg_struct>) -> String {
+        let mut a = String::new();
+        for i in v {
+            write!(a, "{:<8}", i.val);
+        }
+        a
+}
+
+impl fmt::Display for arg_struct {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<8}", self.val)
+    }        
+
 }
 
 #[derive(Debug, Eq, Clone)]
@@ -129,6 +169,28 @@ pub enum source_op {
     Instruction(op_struct),
     Neh,
     Error
+}
+
+impl fmt::Display for arg {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            arg::Label(x) => write!(f, "{:<8}", x),
+            arg::StrLit(x) => write!(f, "{X:<8}", X = format!(r#""{}""#, x)),
+            arg::IntLit(x) => write!(f, "{:<8}", x),
+            arg::Expr(_) => write!(f, "Comment")
+        }
+    }
+}
+
+impl fmt::Display for source_op {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            source_op::Directive(x) => write!(f, "{:<12}", x.name),
+            source_op::Instruction(x) => write!(f, "{:<12}", x.name),
+            source_op::Error => write!(f, "Error_op"),
+            source_op::Neh => write!(f, "Comment")
+        }
+    }
 }
 
 impl PartialEq for arg {
@@ -166,6 +228,7 @@ impl PartialEq for expr_struct {
         self.lhs == other.lhs && self.rhs == other.rhs && self.op == other.op
     }
 }
+
 
 impl op_struct {
     pub fn new(oc: u8, n: &'static str) -> Self {

@@ -5,21 +5,6 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::fmt;
 
-
-bitflags! {
-    pub struct Modifiers: u8 {
-        const N = 0b00100000;
-        const I = 0b00010000;
-        const X = 0b00001000;
-        const B = 0b00000100;
-        const P = 0b00000010;
-        const E = 0b00000001;
-        const z = 0b00000000;
-    }
-}
-
-
-
 #[derive(Debug)]
 pub struct Pos { pub line_no: u32, pub mem_loc: u32 }
 
@@ -160,6 +145,15 @@ pub enum arg {
     Expr(Box<expr_struct>)
 }
 
+impl arg {
+    pub fn unwrap_as_int(&self) -> i32 {
+        match self {
+            arg::IntLit(x) => *x,
+            _ => -1
+        }
+    }
+}
+
 #[derive(Debug, Eq, Clone)]
 pub struct op_struct { pub opcode: u8, pub name: &'static str, pub long: bool }
 
@@ -169,6 +163,22 @@ pub enum source_op {
     Instruction(op_struct),
     Neh,
     Error
+}
+
+impl source_op {
+    pub fn unwrap_as_directive(&self) -> String {
+        match self {
+            source_op::Directive(x) => x.name.to_owned(),
+            _ => "not directive".to_owned(),
+        }
+    }
+
+    pub fn unwrap_as_instruction(&self) -> String {
+        match self {
+            source_op::Instruction(x) => x.name.to_owned(),
+            _ => "not instruction".to_owned(),
+        }
+    }
 }
 
 impl fmt::Display for arg {

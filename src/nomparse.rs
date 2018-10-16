@@ -30,6 +30,12 @@ pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'stati
     }
 }
 
+pub fn gen_header_record(parsed_vec: &Vec<Line>) -> String {
+    let start = parsed_vec.iter().find(|i| i.operation.unwrap_as_directive() == "START".to_owned()).unwrap();
+    let end = parsed_vec.iter().find(|i| i.operation.unwrap_as_directive() == "END".to_owned()).unwrap().mem_loc;
+    String::new() + "H" + &*format!("|{:>6}|{:>6X}|{:6X}\n", start.label.clone().unwrap(), start.args[0].val.unwrap_as_int(), end - start.args[0].val.unwrap_as_int() as u32)
+}
+
 pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
     match curr.format {
         format::Opless => {

@@ -1,7 +1,7 @@
 # rusty-sic-xe
 An SIC XE assembler written in Rust.
 
-This software was made as a project for the 5th semester course in Systems Programming as part of the B.E. Information Science degree at the National Institute of Engineering, Mysore.
+This software was made as a project for the 5th semester course in Systems Software as a part of the B.E. Information Science degree at the National Institute of Engineering, Mysore.
 
 This SIC/XE assembler has the following features-
 
@@ -19,3 +19,10 @@ This SIC/XE assembler has the following features-
 * Constant expressions
 * Full SIC/XE instruction set support
 * External references
+
+
+## References
+
+* [nom reference pages](https://github.com/Geal/nom)
+* [Rust language reference](https://doc.rust-lang.org)
+* System Software: An Introduction to Systems Programming (3rd Edition) by Leland L. Beck

@@ -17,6 +17,7 @@ pub enum format {
     Normal,
     Long,
     None,
+    Directive,
     Comment
 }
 
@@ -115,19 +116,26 @@ pub struct arg_struct {
     pub modifier: addr_mod
 }
 
-pub fn display_vec(v: &Vec<arg_struct>) -> String {
+pub fn display_vec<T: fmt::Display>(v: &Vec<T>) -> String {
         let mut a = String::new();
         for i in v {
-            write!(a, "{:<8}", i.val);
+            write!(a, "{}", i);
+        }
+        a
+}
+
+pub fn display_vec_nums(v: &Vec<u8>) -> String {
+        let mut a = String::new();
+        for i in v {
+            write!(a, "{:02X}", i);
         }
         a
 }
 
 impl fmt::Display for arg_struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<8}", self.val)
+        write!(f, "{:<8},", self.val)
     }        
-
 }
 
 #[derive(Debug, Eq, Clone)]
@@ -146,10 +154,17 @@ pub enum arg {
 }
 
 impl arg {
-    pub fn unwrap_as_int(&self) -> i32 {
+    pub fn unwrap_as_int(&self) -> Option<i32> {
         match self {
-            arg::IntLit(x) => *x,
-            _ => -1
+            arg::IntLit(x) => Some(*x),
+            _ => None
+        }
+    }
+
+    pub fn unwrap_as_string(&self) -> &str {
+        match self {
+            arg::StrLit(ref x) => x,
+            _ => ""
         }
     }
 }

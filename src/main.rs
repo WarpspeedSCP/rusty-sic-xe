@@ -4,16 +4,13 @@
 #[macro_use]
 extern crate nom;
 
-#[macro_use]
-extern crate bitflags;
-
 use std::io::Write;
 use std::fs::File;
 
 mod nomparse;
 mod line;
 
-use self::line::display_vec;
+use self::line::{ display_vec, display_vec_nums };
 
 
 fn main() {
@@ -22,25 +19,31 @@ fn main() {
     let mut err_vec: Vec<Result<(), String> > = Vec::new();
     let mut parse_vec: Vec<line::Line> = Vec::new();
     let mut curr_line = 0;
+    let mut base = 0xFFFFFFFFu32;
     let mut curr_mem_loc: u32 = 0u32;
     let mut sym_tab: line::Symtab = line::Symtab::new();
     for line in input.lines() {
-        let res = nomparse::statement(
+        let mut res = nomparse::statement(
             &(line.to_owned() + "\n").as_bytes(),
             &mut curr_mem_loc,
             &mut curr_line,
             &mut sym_tab,
             &mut err_vec
         ).unwrap().1;
-        println!("{:#?}", res);
                          //line_no memloc label opcode args
-        write!(parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:?}\n", res.line_no, res.mem_loc, res.label.clone().unwrap_or("".to_owned()), res.operation, display_vec(&res.args), res.format);
+        //
         parse_vec.push(res);
 
     }
+        println!("{:#?}", sym_tab);
 
-    println!("{}", nomparse::gen_header_record(&parse_vec));
-    println!("{:#?}", sym_tab);
+    //for mut res in &mut parse_vec {
+    //    nomparse::gen_obj_code(res, &mut sym_tab, &mut base);
+    //    //write!(parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", res.line_no, res.mem_loc, res.label.clone().unwrap_or("".to_owned()), res.operation, display_vec(&res.args), display_vec_nums(&res.obj_code));
+    //}
+    println!("{}", nomparse::gen_records(&mut parse_vec, &mut sym_tab, &mut parsed));
+
+
 
 
     // let mut curr = line::Line::new()
@@ -104,7 +107,7 @@ fn tst() {
         line_no: 38,
         mem_loc: 0x0127
     });
-
-    nomparse::gen_obj_code(&mut curr, &mut sym_tab, 0xFFFFFFFF);
+    let mut d = 0xFFFFFFFFu32;
+    nomparse::gen_obj_code(&mut curr, &mut sym_tab, &mut d);
     println!("{:#?}", curr);
 }

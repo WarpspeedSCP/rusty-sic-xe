@@ -1,6 +1,8 @@
 use nom::{is_hex_digit, is_digit, is_alphabetic, is_alphanumeric};
 
 use std::str;
+use std::fs::File;
+
 
 use super::line::*;
 
@@ -30,19 +32,86 @@ pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'stati
     }
 }
 
-pub fn gen_header_record(parsed_vec: &Vec<Line>) -> String {
-    let start = parsed_vec.iter().find(|i| i.operation.unwrap_as_directive() == "START".to_owned()).unwrap();
-    let st = start.args[0].val.unwrap_as_int();
-    let end = parsed_vec.iter().find(|i| i.operation.unwrap_as_directive() == "END".to_owned()).unwrap().mem_loc;
-    String::new() + "H" + &*format!("{:>6}{:0>6X}{:06X}\n", start.label.clone().unwrap(), st, end as u32)
+pub fn gen_header_record(start_line: &Line, end_line: &Line) -> String {
+    let st = start_line.args[0].val.unwrap_as_int();
+    let end = end_line.mem_loc;
+    String::new() + "H" + &*format!("{:>6}{:0>6X}{:06X}", start_line.label.clone().unwrap(), st.unwrap(), end as u32)
 }
 
-pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
+pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mut File) -> String {
+    let mut base = 0xFFFFFFFFu32;
+    let mut start = Line::new();
+    let mut obj_code = String::new();
+    let mut counter = 30;
+    for i in parsed_vec {
+        gen_obj_code(i, sym_tab, &mut base);
+        if counter + i.obj_code.len() > 30 {
+            counter = 0;
+            obj_code.push_str("\nT");
+            use std::fmt::Write;
+            write!(obj_code, "{:06X}", i.mem_loc);
+        }
+        match i.operation {
+            source_op::Directive(ref x) => {
+                match x.name {
+                    "START" => {
+                        start = i.clone();
+                    }
+                    "END" => {
+                        obj_code = gen_header_record(&start, i) + &*obj_code + "\nE";
+                    }
+                    "RESB" | "RESW"=> counter = 30,
+                    "BYTE" => {
+                        match i.args[0].val.unwrap_as_string().len() {
+                            0 => {
+                                for i in i.obj_code.iter().map(|x| format!("{:X}", x)).collect::<Vec<String> >() {
+                                    obj_code.push_str(&*i);
+                                }
+                            }
+                            _ => {
+                                obj_code.push_str(str::from_utf8(i.obj_code.as_slice()).unwrap());
+                            }
+                        }
+                        counter += i.obj_code.len();
+                    }
+                    "WORD" => {
+                        match i.args[0].val.unwrap_as_string().len() {
+                            0 => {
+                                for i in i.obj_code.iter().map(|x| format!("{:X}", x)).collect::<Vec<String> >() {
+                                    obj_code.push_str(&*i);
+                                }
+                            }
+                            _ => panic!("WORD can't store strings!")
+                        }
+                        counter += i.obj_code.len();
+                    }
+                    _ => continue
+                }
+            }
+            source_op::Instruction(_) => {
+                counter += i.obj_code.len();
+                for i in i.obj_code.iter().map(|x| format!("{:X}", x)).collect::<Vec<String> >() {
+                    obj_code.push_str(&*i);
+                }
+            }
+            source_op::Neh => continue,
+            source_op::Error => panic!()
+        }
+        {
+            use std::io::Write;
+            write!(*parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", i.line_no, i.mem_loc, i.label.clone().unwrap_or("".to_owned()), i.operation, display_vec(&i.args), display_vec_nums(&i.obj_code));
+        }
+    }
+
+    obj_code    
+}
+
+pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: &mut u32) {
     match curr.format {
         format::Opless => {
             let tmp = curr.operation.clone();
             match tmp {
-                source_op::Instruction(x) => curr.obj_code.push(x.opcode),
+                source_op::Instruction(x) => if x.name == "RSUB"{ curr.obj_code.push(x.opcode); curr.obj_code.push(0x00); curr.obj_code.push(0x00); } else { curr.obj_code.push(x.opcode) },
                 _ => panic!("NOT ALLOWED")
             }
         },
@@ -75,16 +144,16 @@ pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
                         addr_mod::Direct | addr_mod::Indirect => match curr.args[0].val {
                             arg::Label(ref x) => {
                                 let target = symtab.get(x).unwrap().mem_loc;
-                                if  base != 0xFFFFFFFF  {
-                                    disp = ((target - base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                if  *base != 0xFFFFFFFF  {
+                                    disp = ((target - *base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
                                 } else {
                                     disp = (((target as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
                                 }
                             }
                             arg::IntLit(ref x) => {
                                 let target = *x;
-                                if  base != 0xFFFFFFFF  {
-                                    disp = ((target as u32 - base) as u16 & 0x0FFF) | 0x4000u16;
+                                if  *base != 0xFFFFFFFF  {
+                                    disp = ((target as u32 - *base) as u16 & 0x0FFF) | 0x4000u16;
                                 } else {
                                     disp = (((target - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16;
                                 }
@@ -94,8 +163,8 @@ pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
                         addr_mod::Immediate => match curr.args[0].val {
                             arg::Label(ref x) => {
                                 let target = symtab.get(x).unwrap().mem_loc;
-                                if  base != 0xFFFFFFFF  {
-                                    disp = ((target - base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                if  *base != 0xFFFFFFFF  {
+                                    disp = ((target - *base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
                                 } else {
                                     disp = (((target as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
                                 }
@@ -179,6 +248,39 @@ pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: u32) {
                 _ => panic!()
             }
         },
+        format::Directive => {
+            match &*curr.operation.unwrap_as_directive() {
+                "BYTE" => {
+                    let code = curr.args[0].val.unwrap_as_string().to_owned();
+                    if code.len() > 0 {
+                        curr.obj_code.extend(code.into_bytes().iter())
+                    } else {
+                        curr.obj_code.extend(curr.args.iter().map(|x| x.val.unwrap_as_int().unwrap() as u8))
+                    }
+                }
+                "WORD" => {
+                    //
+                    let code = curr.args[0].val.unwrap_as_string().to_owned();
+                    if code.len() > 0 {
+                        panic!()
+                    } else {
+                        curr.obj_code.extend(
+                            curr.args.iter()
+                            .map(|x| x.val.unwrap_as_int().unwrap() as u32)
+                            .flat_map(|x| vec![
+                                ((x & 0x00FF0000) >> 16) as u8, 
+                                ((x & 0x0000FF00) >> 8) as u8, 
+                                ((x & 0x000000FF) >> 0) as u8
+                            ]).collect::<Vec<u8>>()
+                        );
+                    }
+                }
+                "RESB" | "RESW" => return,
+                "BASE" => *base = symtab.get(curr.args[0].val.unwrap_as_string()).unwrap().mem_loc,
+                "NOBASE" => *base = 0xFFFFFFFF,
+                _ => return
+            }
+        }
         _ => return
     }
 }
@@ -351,6 +453,7 @@ named!(
         |   tag_max!("RESB" ) => { |_| source_op::Directive(op_struct::new(0x05, "RESB" )) } 
         |   tag_max!("RESW" ) => { |_| source_op::Directive(op_struct::new(0x06, "RESW" )) }
         |   tag_max!("BASE" ) => { |_| source_op::Directive(op_struct::new(0x07, "BASE" )) }
+        |   tag_max!("NOBASE" ) => { |_| source_op::Directive(op_struct::new(0x08, "NOBASE" )) }
         )
 );
 
@@ -518,6 +621,7 @@ named_args!(
                 }
                 source_op::Neh => res = res.format(format::Comment),
                 source_op::Directive(ref x) => {
+                    res = res.format(format::Directive);
                     match x.name {
                         "BYTE" => {
                             err_vec.push(add_to_symtab(&mut res, sym_tab, (true, "The BYTE directive requires a label!")));

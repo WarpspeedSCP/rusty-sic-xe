@@ -39,13 +39,15 @@ pub fn gen_header_record(start_line: &Line, end_line: &Line) -> String {
 }
 
 pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mut File) -> String {
+    let mut mod_tab: Modtab = Modtab::new();
+    
     let mut base = 0xFFFFFFFFu32;
     let mut start = Line::new();
     let mut obj_code = String::new();
-    let mut counter = 30;
+    let mut counter = 29;
     for i in parsed_vec {
         gen_obj_code(i, sym_tab, &mut base);
-        if counter + i.obj_code.len() > 30 {
+        if (counter + i.obj_code.len() >= 30) && !((i.operation.unwrap_as_directive() == "RESB") || (i.operation.unwrap_as_directive() == "RESW") || (i.operation == source_op::Neh)) {
             counter = 0;
             obj_code.push_str("\nT");
             use std::fmt::Write;
@@ -58,7 +60,9 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
                         start = i.clone();
                     }
                     "END" => {
-                        obj_code = gen_header_record(&start, i) + &*obj_code + "\nE";
+                        use std::fmt::Write;
+                        obj_code = gen_header_record(&start, i) + &*obj_code;
+                        write!(obj_code, "\nE{:06X}\n", start.mem_loc);
                     }
                     "RESB" | "RESW"=> counter = 30,
                     "BYTE" => {
@@ -93,6 +97,9 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
                 for i in i.obj_code.iter().map(|x| format!("{:X}", x)).collect::<Vec<String> >() {
                     obj_code.push_str(&*i);
                 }
+                if i.format == format::Long {
+                    mod_tab.insert(i.mem_loc + 1, mod_rec::new().length(5).mem_loc(i.mem_loc + 1).positive(true).symbol(start.label.clone().unwrap()));
+                }
             }
             source_op::Neh => continue,
             source_op::Error => panic!()
@@ -102,7 +109,10 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
             write!(*parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", i.line_no, i.mem_loc, i.label.clone().unwrap_or("".to_owned()), i.operation, display_vec(&i.args), display_vec_nums(&i.obj_code));
         }
     }
-
+    for i in mod_tab {
+        use std::fmt::Write;
+        write!(obj_code, "M{:06X}{:02X}\n", i.1.mem_loc, i.1.length);//, if i.1.pos {"+"} else {"-"}, sym_tab.get(&i.1.symbol).unwrap().mem_loc);
+    }
     obj_code    
 }
 

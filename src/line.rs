@@ -9,6 +9,45 @@ use std::fmt;
 pub struct Pos { pub line_no: u32, pub mem_loc: u32 }
 
 pub type Symtab = HashMap<String, Pos>;
+pub type Modtab = HashMap<u32, mod_rec>;
+
+pub struct mod_rec {
+    pub mem_loc: u32,
+    pub length: u8,
+    pub pos: bool,
+    pub symbol: String
+}
+
+impl mod_rec {
+    pub fn new() -> mod_rec {
+        mod_rec {
+            mem_loc: 0,
+            length: 0,
+            pos: true,
+            symbol: String::default()
+        }
+    }
+
+    pub fn mem_loc(mut self, m: u32) -> Self {
+        self.mem_loc = m;
+        self
+    }
+
+    pub fn length(mut self, m: u8) -> Self {
+        self.length = m;
+        self
+    }
+
+    pub fn positive(mut self, m: bool) -> Self {
+        self.pos = m;
+        self
+    }
+
+    pub fn symbol(mut self, m: String) -> Self {
+        self.symbol = m.clone();
+        self
+    }
+}
 
 #[derive(Debug, Eq, Clone)]
 pub enum format {

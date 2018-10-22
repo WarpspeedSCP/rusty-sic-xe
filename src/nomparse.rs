@@ -6,7 +6,7 @@ use std::fs::File;
 
 use super::line::*;
 
-pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'static str)) -> Result<(), String> {
+pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &str)) -> Result<(), String> {
     match curr.label {
         Some(ref l) => {
             if !symtab.contains_key(l) {
@@ -15,8 +15,9 @@ pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &'stati
             } else {
                 Err(
                     format!(
-                        "Duplicate definition of symbol {}, first defined in line {}.", 
-                        l, 
+                        "Duplicate definition of symbol {} at line {}, first defined in line {}.", 
+                        l,
+                        curr.line_no, 
                         symtab.get(l).unwrap().mem_loc
                     )
                 )
@@ -62,7 +63,7 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
                     "END" => {
                         use std::fmt::Write;
                         obj_code = gen_header_record(&start, i) + &*obj_code;
-                        write!(obj_code, "\nE{:06X}\n", start.mem_loc);
+                        write!(obj_code, "\nE{:06X}\n", start.args[0].val.unwrap_as_int().unwrap());
                     }
                     "RESB" | "RESW"=> counter = 30,
                     "BYTE" => {
@@ -548,18 +549,22 @@ named!(
 named!(
     pub args(&[u8]) -> Vec<arg_struct>,
     do_parse!(
-        many1!(alt!(tag!(" ") | tag!("\t")))
-     >> a: separated_list!(
-            delimited!(
-                opt!(alt!(
-                    tag!(" ") | tag!("\t")
-                )), 
-                tag!(","), 
-                opt!(alt!(
-                    tag!(" ") | tag!("\t")
-                ))
-            ),
-            arg
+        many1!(
+            alt!(
+                tag!(" ") | tag!("\t")
+            )
+        )
+     >> a:  separated_list!(
+                delimited!(
+                    opt!(alt!(
+                        tag!(" ") | tag!("\t")
+                    )), 
+                    tag!(","), 
+                    opt!(alt!(
+                        tag!(" ") | tag!("\t")
+                    ))
+                ),
+                arg
         )
      >> (a)
     )
@@ -632,13 +637,14 @@ named_args!(
                 source_op::Neh => res = res.format(format::Comment),
                 source_op::Directive(ref x) => {
                     res = res.format(format::Directive);
+                    let err_msg = format!("On line {}, the ", line_no);
                     match x.name {
                         "BYTE" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, "The BYTE directive requires a label!")));
+                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, &(err_msg + "BYTE directive requires a label!"))));
                             match a[0].val {
                                 arg::StrLit(ref s) => *mem_loc += s.len() as u32,
                                 arg::IntLit(_) => *mem_loc += a.len() as u32,
-                                _ => err_vec.push(Err("The BYTE directive does not accept labels as arguments!".to_owned())),
+                                _ => err_vec.push(Err(format!("On line {}, the BYTE directive does not accept labels as arguments!", line_no))),
                             };
                         
                         }
@@ -647,23 +653,23 @@ named_args!(
                             match a[0].val {
                                 arg::StrLit(ref s) => *mem_loc += 3 * s.len() as u32,
                                 arg::IntLit(_) => *mem_loc += 3 * a.len() as u32,
-                                _ => err_vec.push(Err("The WORD directive does not accept labels as arguments!".to_owned())),
+                                _ => err_vec.push(Err(format!("On line {}, the WORD directive does not accept labels as arguments!", line_no))),
                             }
 
                         } 
                         "RESB" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, "The RESB directive requires a label!")));
+                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, &(err_msg + "RESB directive requires a label!") )));
                             match a[0].val {
                                 arg::IntLit(ref x) => *mem_loc += *x as u32,
-                                _ => err_vec.push(Err("The RESB directive does not accept labels as arguments!".to_owned())),
+                                _ => err_vec.push(Err(format!("On line {}, the RESB directive does not accept labels as arguments!", line_no))),
                             }
 
                         }
                         "RESW" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, "The RESW directive requires a label!")));
+                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, &(err_msg + "RESW directive requires a label!"))));
                             match a[0].val {
                                 arg::IntLit(ref x) => *mem_loc += 3 * *x as u32,
-                                _ => err_vec.push(Err("The RESW directive does not accept labels as arguments!".to_owned())),
+                                _ => err_vec.push(Err(format!("On line {}, the RESW directive does not accept labels as arguments!", line_no))),
                             }
 
                         }
@@ -675,7 +681,7 @@ named_args!(
                         }
                     }
                 }
-                source_op::Error => err_vec.push(Err("Invalid opcode in this line!".to_owned()))
+                source_op::Error => err_vec.push(Err(format!("Invalid opcode at line {}!", line_no)))
             }
             res.args(a).operation(op)
         }) 

@@ -1,7 +1,6 @@
 use nom::{is_hex_digit, is_digit, is_alphabetic, is_alphanumeric};
 
 use std::str;
-use std::fs::File;
 
 
 use super::line::*;
@@ -36,10 +35,65 @@ pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &str)) 
 pub fn gen_header_record(start_line: &Line, end_line: &Line) -> String {
     let st = start_line.args[0].val.unwrap_as_int();
     let end = end_line.mem_loc;
-    String::new() + "H" + &*format!("{:>6}{:0>6X}{:06X}", start_line.label.clone().unwrap(), st.unwrap(), end as u32)
+    String::new() + "H" + &*format!("{:<5}{:0>6X}{:06X}", start_line.label.clone().unwrap(), st.unwrap(), end as u32)
 }
 
-pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mut File) -> String {
+#[derive(Clone)]
+pub struct VecWrapper {
+    pub vec: Vec<u8>
+}
+
+impl VecWrapper {
+    pub fn new() -> VecWrapper {
+        VecWrapper {
+            vec: Vec::new()
+        }
+    }
+
+    pub fn vec(mut self, v: Vec<u8>) -> VecWrapper {
+        self.vec = v;
+        self
+    }
+
+    pub fn push_word(mut self, word: u32) -> VecWrapper {
+        self.vec.push(((word & 0x00FF0000) >> 16) as u8);
+        self.vec.push(((word & 0x0000FF00) >> 8) as u8);
+        self.vec.push(((word & 0x000000FF) >> 0) as u8);
+        self
+    }
+
+    pub fn push_byte(mut self, byte: u8) -> VecWrapper {
+        self.vec.push(byte);
+        self
+    }
+
+    pub fn push_str(mut self, string: String) -> VecWrapper {
+        for i in string.into_bytes() {
+            self.vec.push(i)
+        }
+        self
+    }
+
+    pub fn push_vec(mut self, v: &Vec<u8>) -> VecWrapper {
+        for i in v {
+            self.vec.push(*i)
+        }
+        self
+    }
+}
+
+pub fn vec_gen_header_record(start_line: &Line, end_line: &Line) -> Vec<u8> {
+    let st = start_line.args[0].val.unwrap_as_int();
+    let end = end_line.mem_loc;
+    VecWrapper::new()
+    .push_byte('H' as u8)
+    .push_str(format!("{:>6}", start_line.label.clone().unwrap()))
+    .push_word(st.unwrap() as u32)
+    .push_word(end as u32)
+    .vec
+}
+
+pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mut String) -> String {
     let mut mod_tab: Modtab = Modtab::new();
     
     let mut base = 0xFFFFFFFFu32;
@@ -106,7 +160,7 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
             source_op::Error => panic!()
         }
         {
-            use std::io::Write;
+            use std::fmt::Write;
             write!(*parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", i.line_no, i.mem_loc, i.label.clone().unwrap_or("".to_owned()), i.operation, display_vec(&i.args), display_vec_nums(&i.obj_code));
         }
     }
@@ -115,6 +169,77 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
         write!(obj_code, "M{:06X}{:02X}\n", i.1.mem_loc, i.1.length);//, if i.1.pos {"+"} else {"-"}, sym_tab.get(&i.1.symbol).unwrap().mem_loc);
     }
     obj_code    
+}
+
+pub fn vec_gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mut String) -> Vec<u8> {
+    let mut mod_tab: Modtab = Modtab::new();
+    
+    let mut base = 0xFFFFFFFFu32;
+    let mut start = Line::new();
+    let mut obj_code= VecWrapper::new();
+    let mut counter = 29;
+    for i in parsed_vec {
+        gen_obj_code(i, sym_tab, &mut base);
+        if (counter + i.obj_code.len() >= 30) && !((i.operation.unwrap_as_directive() == "RESB") || (i.operation.unwrap_as_directive() == "RESW") || (i.operation == source_op::Neh)) {
+            counter = 0;
+            obj_code = obj_code.push_byte('T' as u8).push_word(i.mem_loc);
+        }
+        match i.operation {
+            source_op::Directive(ref x) => {
+                match x.name {
+                    "START" => {
+                        start = i.clone();
+                    }
+                    "END" => {
+                        obj_code = VecWrapper::new()
+                        .vec(vec_gen_header_record(&start, i))
+                        .push_vec(&obj_code.vec)
+                        .push_byte('E' as u8)
+                        .push_word(
+                            start
+                            .args[0]
+                            .val
+                            .unwrap_as_int()
+                            .unwrap() as u32
+                        )
+                        .push_byte(0);
+                    }
+                    "RESB" | "RESW"=> counter = 30,
+                    "BYTE" => {
+                        obj_code = obj_code.push_vec(&i.obj_code);
+                        counter += i.obj_code.len();
+                    }
+                    "WORD" => {
+                        match i.args[0].val.unwrap_as_string().len() {
+                            0 => {
+                                obj_code = obj_code.push_vec(&i.obj_code);
+                            }
+                            _ => panic!("WORD can't store strings!")
+                        }
+                        counter += i.obj_code.len();
+                    }
+                    _ => continue
+                }
+            }
+            source_op::Instruction(_) => {
+                counter += i.obj_code.len();
+                obj_code = obj_code.push_vec(&i.obj_code);
+                if i.format == format::Long {
+                    mod_tab.insert(i.mem_loc + 1, mod_rec::new().length(5).mem_loc(i.mem_loc + 1).positive(true).symbol(start.label.clone().unwrap()));
+                }
+            }
+            source_op::Neh => continue,
+            source_op::Error => panic!()
+        }
+        {
+            use std::fmt::Write;
+            write!(*parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", i.line_no, i.mem_loc, i.label.clone().unwrap_or("".to_owned()), i.operation, display_vec(&i.args), display_vec_nums(&i.obj_code));
+        }
+    }
+    for i in mod_tab {
+        obj_code = obj_code.push_byte('M' as u8).push_word(i.1.mem_loc).push_byte(i.1.length);//, if i.1.pos {"+"} else {"-"}, sym_tab.get(&i.1.symbol).unwrap().mem_loc);
+    }
+    obj_code.vec
 }
 
 pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: &mut u32) {

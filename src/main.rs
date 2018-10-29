@@ -4,17 +4,37 @@
 #[macro_use]
 extern crate nom;
 
-use std::io::Write;
 use std::fs::File;
+use std::io::BufReader;
+use std::io::BufRead;
+use std::env;
 
 mod nomparse;
 mod line;
 
-use self::line::{ display_vec, display_vec_nums };
-
-
 fn main() {
-    let input = "\nCOPY   START  1000h\nFIRST  STL    RETADR\nCLOOP  +JSUB   RDREC\n       +LDA    LENGTH\n       COMP   ZERO\n       JEQ    ENDFIL\n       JSUB   WRREC\n       J      CLOOP\nENDFIL LDA    EOF\n       STA    BUFFER\n       LDA    THREE\n       STA    LENGTH\n       JSUB   WRREC\n       LDL    RETADR\n       RSUB\nEOF    BYTE   C'EOF'\nTHREE  WORD   3\nZERO   WORD   0\nRETADR RESW   1\nLENGTH RESW   1\nBUFFER RESB   4096\n.\n.      SUBROUTINE TO READ RECORD INTO BUFFER\n.\nRDREC  LDX    ZERO\n       LDA    ZERO\nRLOOP  TD     INPUT\n       JEQ    RLOOP\n       RD     INPUT\n       COMP   ZERO\n       JEQ    EXIT\n       STCH   BUFFER,X\n       TIX    MAXLEN\n       JLT    RLOOP\nEXIT   STX    LENGTH\n       RSUB\nINPUT  BYTE   X'F1'\nMAXLEN WORD   4096\n.\n.      SUBROUTINE TO WRITE RECORD FROM BUFFER\n.\nWRREC  LDX    ZERO\nWLOOP  TD     OUTPUT\n       JEQ    WLOOP\n       LDCH   BUFFER,X\n       WD     OUTPUT\n       TIX    LENGTH\n       JLT    WLOOP\n       RSUB\nOUTPUT BYTE   X'06'\n       END    FIRST\n";
+    let mut args: Vec<String> = env::args().collect();
+    let mut infile: File;
+    let mut outfile: File;
+    let mut option = String::new();
+    match args.len() {
+        1 => {
+            eprintln!("No input files specified, exiting.");
+            return
+        }
+        2 => {
+            infile = File::open(args.pop().unwrap()).unwrap();
+        }
+        3 => {
+            println!("{:#?}", args);
+            option = args.iter().find(|x| x.contains('-')).unwrap().to_string();
+
+            infile = File::open(args[1].clone()).unwrap();
+        }
+        _ => return
+    }
+    let mut input = BufReader::new(infile);
+    let mut intfile = String::new();
     let mut parsed: File = File::create("herp").unwrap();
     let mut err_vec: Vec<Result<(), String> > = Vec::new();
     let mut parse_vec: Vec<line::Line> = Vec::new();
@@ -24,7 +44,7 @@ fn main() {
     let mut sym_tab: line::Symtab = line::Symtab::new();
     for line in input.lines() {
         let mut res = nomparse::statement(
-            &(line.to_owned() + "\n").as_bytes(),
+            &(line.unwrap() + "\n").as_bytes(),
             &mut curr_mem_loc,
             &mut curr_line,
             &mut sym_tab,
@@ -47,10 +67,17 @@ fn main() {
     //    nomparse::gen_obj_code(res, &mut sym_tab, &mut base);
     //    //write!(parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", res.line_no, res.mem_loc, res.label.clone().unwrap_or("".to_owned()), res.operation, display_vec(&res.args), display_vec_nums(&res.obj_code));
     //}
-    println!("{}", nomparse::gen_records(&mut parse_vec, &mut sym_tab, &mut parsed));
+    //println!("{}", nomparse::gen_records(&mut parse_vec, &mut sym_tab, &mut intfile));
 
+    use std::io::prelude::*;
+    use std::ops::Deref;
 
+    if option == "-text" {
+        write!(parsed, "{}", nomparse::gen_records(&mut parse_vec, &mut sym_tab, &mut intfile));
+    } else {
+        parsed.write_all(nomparse::vec_gen_records(&mut parse_vec, &mut sym_tab, &mut intfile).deref());
 
+    }
 
     // let mut curr = line::Line::new()
     // .operation(

@@ -13,7 +13,7 @@ mod nomparse;
 mod line;
 
 fn main() {
-    let mut args: Vec<String> = env::args().collect();
+    let args: Vec<String> = env::args().collect();
     let mut infile: File;
     let mut outfile: File;
     let mut option = String::new();
@@ -23,7 +23,7 @@ fn main() {
             return
         }
         2 => {
-            infile = File::open(args.pop().unwrap()).unwrap();
+            infile = File::open(args.clone().pop().unwrap()).unwrap();
         }
         3 => {
             println!("{:#?}", args);
@@ -78,6 +78,9 @@ fn main() {
         parsed.write_all(nomparse::vec_gen_records(&mut parse_vec, &mut sym_tab, &mut intfile).deref());
 
     }
+
+    let mut intermediate = File::create(args[1].clone() + "__intermediate").unwrap();
+    write!(intermediate, "{}", intfile);
 
     // let mut curr = line::Line::new()
     // .operation(

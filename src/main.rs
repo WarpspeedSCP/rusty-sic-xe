@@ -15,6 +15,7 @@ mod line;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut infile: File;
+    let mut infilename: String;
     let mut outfile: File;
     let mut option = String::new();
     match args.len() {
@@ -23,19 +24,19 @@ fn main() {
             return
         }
         2 => {
+            infilename = args[1].clone();
             infile = File::open(args.clone().pop().unwrap()).unwrap();
         }
         3 => {
-            println!("{:#?}", args);
+            infilename = args[1].clone();
             option = args.iter().find(|x| x.contains('-')).unwrap().to_string();
-
-            infile = File::open(args[1].clone()).unwrap();
+            infile = File::open(infilename.clone()).unwrap();
         }
         _ => return
     }
     let mut input = BufReader::new(infile);
     let mut intfile = String::new();
-    let mut parsed: File = File::create("herp").unwrap();
+    let mut parsed: File = File::create(infilename.clone() + "_out").unwrap();
     let mut err_vec: Vec<Result<(), String> > = Vec::new();
     let mut parse_vec: Vec<line::Line> = Vec::new();
     let mut curr_line = 0;
@@ -43,6 +44,7 @@ fn main() {
     let mut curr_mem_loc: u32 = 0u32;
     let mut sym_tab: line::Symtab = line::Symtab::new();
     for line in input.lines() {
+        println!("{:#?}", line);
         let mut res = nomparse::statement(
             &(line.unwrap() + "\n").as_bytes(),
             &mut curr_mem_loc,
@@ -50,8 +52,7 @@ fn main() {
             &mut sym_tab,
             &mut err_vec
         ).unwrap().1;
-                         //line_no memloc label opcode args
-        //
+
         parse_vec.push(res);
 
     }
@@ -79,7 +80,7 @@ fn main() {
 
     }
 
-    let mut intermediate = File::create(args[1].clone() + "__intermediate").unwrap();
+    let mut intermediate = File::create(infilename.clone() + "__intermediate").unwrap();
     write!(intermediate, "{}", intfile);
 
     // let mut curr = line::Line::new()

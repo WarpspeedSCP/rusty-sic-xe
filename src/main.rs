@@ -44,7 +44,6 @@ fn main() {
     let mut curr_mem_loc: u32 = 0u32;
     let mut sym_tab: line::Symtab = line::Symtab::new();
     for line in input.lines() {
-        println!("{:#?}", line);
         let mut res = nomparse::statement(
             &(line.unwrap() + "\n").as_bytes(),
             &mut curr_mem_loc,

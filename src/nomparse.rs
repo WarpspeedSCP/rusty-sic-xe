@@ -5,11 +5,11 @@ use std::str;
 
 use super::line::*;
 
-pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &str)) -> Result<(), String> {
+pub fn add_to_symtab(curr: &mut Line, v: Option<i32>, symtab: &mut Symtab, panic: (bool, &str)) -> Result<(), String> {
     match curr.label {
         Some(ref l) => {
             if !symtab.contains_key(l) {
-                symtab.insert(l.to_string(), Pos { line_no: curr.line_no, mem_loc: curr.mem_loc });
+                symtab.insert(l.to_string(), Pos { line_no: curr.line_no, mem_loc: curr.mem_loc, val: v });
                 Ok(())
             } else {
                 Err(
@@ -35,7 +35,7 @@ pub fn add_to_symtab(curr: &mut Line, symtab: &mut Symtab, panic: (bool, &str)) 
 pub fn gen_header_record(start_line: &Line, end_line: &Line) -> String {
     let st = start_line.args[0].val.unwrap_as_int();
     let end = end_line.mem_loc;
-    String::new() + "H" + &*format!("{:<5}{:0>6X}{:06X}", start_line.label.clone().unwrap(), st.unwrap(), end as u32)
+    String::new() + "H" + &*format!("{:<6}{:0>6X}{:06X}", start_line.label.clone().unwrap(), st.unwrap(), end as u32)
 }
 
 #[derive(Clone)]
@@ -161,7 +161,7 @@ pub fn gen_records(parsed_vec: &mut Vec<Line>, sym_tab: &mut Symtab, parsed: &mu
         }
         {
             use std::fmt::Write;
-            write!(*parsed, "{:<4}{:<8X}{:<8}{:<8}{:<8}{:<8}\n", i.line_no, i.mem_loc, i.label.clone().unwrap_or("".to_owned()), i.operation, display_vec(&i.args), display_vec_nums(&i.obj_code));
+            write!(*parsed, "{:<4}{:<8X}{:<8}{:<8}{:<}{:<}\n", i.line_no, i.mem_loc, i.label.clone().unwrap_or("".to_owned()), i.operation, display_vec(&i.args), display_vec_nums(&i.obj_code));
         }
     }
     for i in mod_tab {
@@ -279,11 +279,19 @@ pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: &mut u32) {
                     match curr.args[0].modifier {
                         addr_mod::Direct | addr_mod::Indirect => match curr.args[0].val {
                             arg::Label(ref x) => {
-                                let target = symtab.get(x).unwrap().mem_loc;
-                                if  *base != 0xFFFFFFFF  {
-                                    disp = ((target - *base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                let target = symtab.get(x).unwrap();
+                                if let None = target.val {
+                                    if  *base != 0xFFFFFFFF  {
+                                        disp = ((target.mem_loc - *base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                    } else {
+                                        disp = (((target.mem_loc as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                    }
                                 } else {
-                                    disp = (((target as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                    if  *base != 0xFFFFFFFF  {
+                                        disp = ((target.val.unwrap() - *base as i32) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                    } else {
+                                        disp = (((target.val.unwrap() - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                    }
                                 }
                             }
                             arg::IntLit(ref x) => {
@@ -298,11 +306,15 @@ pub fn gen_obj_code(curr: &mut Line, symtab: &Symtab, base: &mut u32) {
                         }
                         addr_mod::Immediate => match curr.args[0].val {
                             arg::Label(ref x) => {
-                                let target = symtab.get(x).unwrap().mem_loc;
-                                if  *base != 0xFFFFFFFF  {
-                                    disp = ((target - *base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                let target = symtab.get(x).unwrap();
+                                if let None = target.val {
+                                    if  *base != 0xFFFFFFFF  {
+                                        disp = ((target.mem_loc - *base) as u16 & 0x0FFF) | 0x4000u16; // OR with 0x4000 for base flag
+                                    } else {
+                                        disp = (((target.mem_loc as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                    }
                                 } else {
-                                    disp = (((target as i32 - curr.mem_loc as i32) as i16 & 0x0FFF) | 0x2000) as u16 ; // OR with 0x2000 for PC flag
+                                    disp = (target.val.unwrap() as i16 & 0x0FFF) as u16;
                                 }
                             }
                             arg::IntLit(ref x) => {
@@ -582,14 +594,15 @@ named!(
 named!(
     pub asm_directive(&[u8]) -> source_op,
         alt_complete!(
-            tag_max!("START") => { |_| source_op::Directive(op_struct::new(0x01, "START")) } 
-        |   tag_max!("END"  ) => { |_| source_op::Directive(op_struct::new(0x02, "END"  )) } 
-        |   tag_max!("BYTE" ) => { |_| source_op::Directive(op_struct::new(0x03, "BYTE" )) } 
-        |   tag_max!("WORD" ) => { |_| source_op::Directive(op_struct::new(0x04, "WORD" )) } 
-        |   tag_max!("RESB" ) => { |_| source_op::Directive(op_struct::new(0x05, "RESB" )) } 
-        |   tag_max!("RESW" ) => { |_| source_op::Directive(op_struct::new(0x06, "RESW" )) }
-        |   tag_max!("BASE" ) => { |_| source_op::Directive(op_struct::new(0x07, "BASE" )) }
+            tag_max!("START")   => { |_| source_op::Directive(op_struct::new(0x01, "START")) } 
+        |   tag_max!("END"  )   => { |_| source_op::Directive(op_struct::new(0x02, "END"  )) } 
+        |   tag_max!("BYTE" )   => { |_| source_op::Directive(op_struct::new(0x03, "BYTE" )) } 
+        |   tag_max!("WORD" )   => { |_| source_op::Directive(op_struct::new(0x04, "WORD" )) } 
+        |   tag_max!("RESB" )   => { |_| source_op::Directive(op_struct::new(0x05, "RESB" )) } 
+        |   tag_max!("RESW" )   => { |_| source_op::Directive(op_struct::new(0x06, "RESW" )) }
+        |   tag_max!("BASE" )   => { |_| source_op::Directive(op_struct::new(0x07, "BASE" )) }
         |   tag_max!("NOBASE" ) => { |_| source_op::Directive(op_struct::new(0x08, "NOBASE" )) }
+        |   tag_max!("EQU")     => { |_| source_op::Directive(op_struct::new(0x09, "EQU")) }
         )
 );
 
@@ -721,7 +734,7 @@ named_args!(
             let mut res = Line::new().mem_loc(*mem_loc).line_no(*line_no).label(l);
             match op {
                 source_op::Instruction(ref x) => {
-                    err_vec.push(add_to_symtab(&mut res, sym_tab, (false, "")));
+                    err_vec.push(add_to_symtab(&mut res, None, sym_tab, (false, "")));
                     if a.len() > 0 {
                         match a[0].val {
                             arg::Label(ref y) => match &*y.to_uppercase() {
@@ -765,7 +778,7 @@ named_args!(
                     let err_msg = format!("On line {}, the ", line_no);
                     match x.name {
                         "BYTE" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, &(err_msg + "BYTE directive requires a label!"))));
+                            err_vec.push(add_to_symtab(&mut res, None, sym_tab, (true, &(err_msg + "BYTE directive requires a label!"))));
                             match a[0].val {
                                 arg::StrLit(ref s) => *mem_loc += s.len() as u32,
                                 arg::IntLit(_) => *mem_loc += a.len() as u32,
@@ -774,7 +787,7 @@ named_args!(
                         
                         }
                         "WORD" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, "The WORD directive requires a label!")));
+                            err_vec.push(add_to_symtab(&mut res, None, sym_tab, (true, "The WORD directive requires a label!")));
                             match a[0].val {
                                 arg::StrLit(ref s) => *mem_loc += 3 * s.len() as u32,
                                 arg::IntLit(_) => *mem_loc += 3 * a.len() as u32,
@@ -783,7 +796,7 @@ named_args!(
 
                         } 
                         "RESB" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, &(err_msg + "RESB directive requires a label!") )));
+                            err_vec.push(add_to_symtab(&mut res, None, sym_tab, (true, &(err_msg + "RESB directive requires a label!") )));
                             match a[0].val {
                                 arg::IntLit(ref x) => *mem_loc += *x as u32,
                                 _ => err_vec.push(Err(format!("On line {}, the RESB directive does not accept labels as arguments!", line_no))),
@@ -791,17 +804,31 @@ named_args!(
 
                         }
                         "RESW" => {
-                            err_vec.push(add_to_symtab(&mut res, sym_tab, (true, &(err_msg + "RESW directive requires a label!"))));
+                            err_vec.push(add_to_symtab(&mut res, None, sym_tab, (true, &(err_msg + "RESW directive requires a label!"))));
                             match a[0].val {
                                 arg::IntLit(ref x) => *mem_loc += 3 * *x as u32,
                                 _ => err_vec.push(Err(format!("On line {}, the RESW directive does not accept labels as arguments!", line_no))),
                             }
-
+                        }
+                        "EQU" => {
+                            if a.len() == 1 { 
+                                match a[0].val {
+                                    arg::IntLit(_) => {err_vec.push(add_to_symtab(&mut res, a[0].val.unwrap_as_int(), sym_tab, (true, &(err_msg + "EQU directive requires a label!"))));},
+                                    arg::Label(ref x) => {
+                                        if !sym_tab.contains_key(x) {
+                                            err_vec.push(Err(format!("On line {}, label {} does not exist!", line_no, x)))
+                                        } else {
+                                            err_vec.push(add_to_symtab(&mut res, sym_tab.get(x).unwrap().val, sym_tab, (false, "")))
+                                        }
+                                    }
+                                    _ => err_vec.push(Err(format!("On line {}, the EQU directive does not accept string literals as arguments!", line_no))),
+                                }
+                            }
                         }
                         _      =>  {
                             match res.label {
-                                Some(ref x) => if x.len() > 0 { err_vec.push(add_to_symtab(&mut res, sym_tab, (false, ""))) },
-                                None        => err_vec.push(add_to_symtab(&mut res, sym_tab, (false, "")))
+                                Some(ref x) => if x.len() > 0 { err_vec.push(add_to_symtab(&mut res, None, sym_tab, (false, ""))) },
+                                None        => {}
                             }
                         }
                     }

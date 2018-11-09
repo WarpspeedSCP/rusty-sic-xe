@@ -14,9 +14,9 @@ mod line;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut infile: File;
-    let mut infilename: String;
-    let mut outfile: File;
+    let infile: File;
+    let infilename: String;
+    let outfile: File;
     let mut option = String::new();
     match args.len() {
         1 => {
@@ -34,17 +34,16 @@ fn main() {
         }
         _ => return
     }
-    let mut input = BufReader::new(infile);
+    let input = BufReader::new(infile);
     let mut intfile = String::new();
     let mut parsed: File = File::create(infilename.clone() + "_out").unwrap();
     let mut err_vec: Vec<Result<(), String> > = Vec::new();
     let mut parse_vec: Vec<line::Line> = Vec::new();
     let mut curr_line = 0;
-    let mut base = 0xFFFFFFFFu32;
     let mut curr_mem_loc: u32 = 0u32;
     let mut sym_tab: line::Symtab = line::Symtab::new();
     for line in input.lines() {
-        let mut res = nomparse::statement(
+        let res = nomparse::statement(
             &(line.unwrap() + "\n").as_bytes(),
             &mut curr_mem_loc,
             &mut curr_line,
@@ -138,12 +137,13 @@ fn tst() {
     .mem_loc(0x104E)
     .format(line::format::Long);
 
-    let mut sym_tab = line::Symtab::new();
-    sym_tab.insert("LENGTH".to_owned(), line::Pos {
-        line_no: 38,
-        mem_loc: 0x0127
-    });
-    let mut d = 0xFFFFFFFFu32;
-    nomparse::gen_obj_code(&mut curr, &mut sym_tab, &mut d);
-    println!("{:#?}", curr);
+    // let mut sym_tab = line::Symtab::new();
+    // sym_tab.insert("LENGTH".to_owned(), line::Pos {
+    //     line_no: 38,
+    //     mem_loc: 0x0127,
+
+    // });
+    // let mut d = 0xFFFFFFFFu32;
+    // nomparse::gen_obj_code(&mut curr, &mut sym_tab, &mut d);
+    // println!("{:#?}", curr);
 }

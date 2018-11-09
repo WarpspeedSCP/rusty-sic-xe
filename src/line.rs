@@ -6,7 +6,7 @@ use std::fmt::Write;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct Pos { pub line_no: u32, pub mem_loc: u32 }
+pub struct Pos { pub line_no: u32, pub mem_loc: u32, pub val: Option<i32> }
 
 pub type Symtab = HashMap<String, Pos>;
 pub type Modtab = HashMap<u32, mod_rec>;
@@ -160,6 +160,10 @@ pub fn display_vec<T: fmt::Display>(v: &Vec<T>) -> String {
         for i in v {
             write!(a, "{}", i);
         }
+        for i in 0..(if v.len() < 2 { 2 - v.len() } else { 1 }) {
+            write!(a, "      ");
+        }
+
         a
 }
 
@@ -167,6 +171,9 @@ pub fn display_vec_nums(v: &Vec<u8>) -> String {
         let mut a = String::new();
         for i in v {
             write!(a, "{:02X}", i);
+        }
+        for i in 0..(if v.len() < 2 { 2 - v.len() } else { 0 }) {
+            write!(a, "      ");
         }
         a
 }

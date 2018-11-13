@@ -21,6 +21,11 @@ fn main() {
     match args.len() {
         1 => {
             eprintln!("No input files specified, exiting.");
+            println!("Proper syntax-
+yacc.exe <input file name> [-text]
+
+Options:
+-text    - Generate object code as ASCII characters.\n");
             return
         }
         2 => {
@@ -55,12 +60,20 @@ fn main() {
 
     }
 
-    if err_vec.iter().map(|x| match x { Ok(_) => x, Err(ref e) => { eprintln!("{}", e); x } }).any(|x| x.is_err()) {
+    if err_vec.iter().map(|x| {
+        match x { 
+            Ok(_) => x, 
+            Err(ref e) => { 
+                eprintln!("{}", e);
+                x 
+            } 
+        }
+    }).any(|x| x.is_err()) {
         eprintln!("Errors found, exiting.");
         return
     }
 
-        //println!("{:#?}", sym_tab);
+    //println!("{:#?}", sym_tab);
 
     //for mut res in &mut parse_vec {
     //    nomparse::gen_obj_code(res, &mut sym_tab, &mut base);
